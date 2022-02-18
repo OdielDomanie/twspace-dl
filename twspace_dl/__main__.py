@@ -190,8 +190,8 @@ def twspace(args: argparse.Namespace) -> None:
         except KeyboardInterrupt:
             logging.info("Download Interrupted")
         finally:
-            if not args.keep_files and os.path.exists(twspace_dl._tmpdir):
-                shutil.rmtree(twspace_dl._tmpdir)
+            if not args.keep_files and os.path.exists(twspace_dl.tmpdir):
+                shutil.rmtree(twspace_dl.tmpdir)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+"Modified by OdielDomanie first at 2022.02.18 ."
+
 import json
 import logging
 import os
@@ -14,6 +16,8 @@ import requests
 from .format_info import FormatInfo
 
 
+logger = logging.getLogger("twspace")
+
 class TwspaceDL:
     """Downloader class for twitter spaces"""
 
@@ -21,13 +25,13 @@ class TwspaceDL:
         self.id = space_id
         self.format_str = format_str or FormatInfo.DEFAULT_FNAME_FORMAT
         self.session = requests.Session()
-        self._tmpdir: str
+        self.tmpdir = tempfile.mkdtemp(dir=".")
 
     @classmethod
     def from_space_url(cls, url: str, format_str: str):
         """Create a TwspaceDL object from a space url"""
         if not url:
-            logging.warning("No space url given, file won't have any metadata")
+            logger.warning("No space url given, file won't have any metadata")
             space_id = "no_id"
             format_str = "no_info"
         else:
@@ -76,7 +80,7 @@ class TwspaceDL:
         tweets = response.text
 
         try:
-            space_id = re.findall(r"(?<=https://twitter.com/i/spaces/)\w*", tweets)[0]
+            space_id = re.findall(r"(?<=https://twitter\.com/i/spaces/)\w*", tweets)[0]
         except (IndexError, json.JSONDecodeError) as err:
             raise RuntimeError("User is not live") from err
         return cls(space_id, format_str)
@@ -153,7 +157,7 @@ class TwspaceDL:
         guest_token = response["guest_token"]
         if not guest_token:
             raise RuntimeError("No guest token found after five retry")
-        logging.debug(guest_token)
+        logger.debug(guest_token)
         return guest_token
 
     @cached_property
@@ -191,9 +195,9 @@ class TwspaceDL:
         metadata = response.json()
         try:
             media_key = metadata["data"]["audioSpace"]["metadata"]["media_key"]
-            logging.debug(media_key)
+            logger.debug(media_key)
         except KeyError as error:
-            logging.error(metadata)
+            logger.error(metadata)
             raise RuntimeError(metadata) from error
         return metadata
 
@@ -213,7 +217,7 @@ class TwspaceDL:
                 "is_space_available_for_replay"
             ]
         ):
-            logging.error(
+            logger.error(
                 (
                     "Can't Download. Space has ended, can't retrieve master url. "
                     "You can provide it with -f URL if you have it."
@@ -271,14 +275,14 @@ class TwspaceDL:
         path = os.path.join(save_dir, filename)
         with open(path, "w", encoding="utf-8") as stream_io:
             stream_io.write(self.playlist_text)
-        logging.info(f"{path} written to disk")
+        logger.info(f"{path} written to disk")
 
     def download(self) -> None:
         """Download a twitter space"""
         if not shutil.which("ffmpeg"):
             raise FileNotFoundError("ffmpeg not installed")
         metadata = self.metadata
-        tempdir = self._tmpdir = tempfile.mkdtemp(dir=".")
+        tempdir = self.tmpdir
         self.write_playlist(save_dir=tempdir)
         format_info = FormatInfo()
         format_info.set_info(metadata)
@@ -303,7 +307,7 @@ class TwspaceDL:
 
         filename = os.path.basename(self.filename)
         filename_m3u8 = os.path.join(tempdir, filename + ".m3u8")
-        filename_old = os.path.join(tempdir, filename + ".m4a")
+        filename_old = os.path.join(tempdir, filename + ".ts")
         cmd_old = cmd_base.copy()
         cmd_old.insert(1, "-protocol_whitelist")
         cmd_old.insert(2, "file,https,tls,tcp")
@@ -311,35 +315,38 @@ class TwspaceDL:
         cmd_old.append(filename_old)
 
         if state == "Running":
-            filename_new = os.path.join(tempdir, filename + "_new.m4a")
-            cmd_new = cmd_base.copy()
-            cmd_new.insert(6, (self.dyn_url))
-            cmd_new.append(filename_new)
-
-            concat_fn = os.path.join(tempdir, "list.txt")
-            with open(concat_fn, "w", encoding="utf-8") as list_io:
-                list_io.write(
-                    "file "
-                    + f"'{os.path.abspath(os.path.join(os.getcwd(), filename_old))}'"
-                    + "\n"
-                    + "file "
-                    + f"'{os.path.abspath(os.path.join(os.getcwd(), filename_new))}'"
-                )
-
-            cmd_final = cmd_base.copy()
-            cmd_final.insert(1, "-f")
-            cmd_final.insert(2, "concat")
-            cmd_final.insert(3, "-safe")
-            cmd_final.insert(4, "0")
-            cmd_final.insert(10, concat_fn)
-            cmd_final.append(self.filename + ".m4a")
-
             try:
-                subprocess.run(cmd_new, check=True)
-                subprocess.run(cmd_old, check=True)
-                subprocess.run(cmd_final, check=True)
-            except subprocess.CalledProcessError as err:
-                raise RuntimeError(" ".join(err.cmd)) from err
+                filename_new = os.path.join(tempdir, filename + "_new.ts")
+                cmd_new = cmd_base.copy()
+                cmd_new.insert(6, (self.dyn_url))
+                cmd_new.append(filename_new)
+
+                concat_fn = os.path.join(tempdir, "list.txt")
+                with open(concat_fn, "w", encoding="utf-8") as list_io:
+                    list_io.write(
+                        "file "
+                        + f"'{os.path.abspath(os.path.join(os.getcwd(), filename_old))}'"
+                        + "\n"
+                        + "file "
+                        + f"'{os.path.abspath(os.path.join(os.getcwd(), filename_new))}'"
+                    )
+
+                cmd_final = cmd_base.copy()
+                cmd_final.insert(1, "-f")
+                cmd_final.insert(2, "concat")
+                cmd_final.insert(3, "-safe")
+                cmd_final.insert(4, "0")
+                cmd_final.insert(10, concat_fn)
+                cmd_final.append(self.filename + ".m4a")
+
+                try:
+                    subprocess.run(cmd_new, check=True)
+                    subprocess.run(cmd_old, check=True)
+                    subprocess.run(cmd_final, check=True)
+                except subprocess.CalledProcessError as err:
+                    raise RuntimeError(" ".join(err.cmd)) from err
+            finally:
+                shutil.rmtree(tempdir, ignore_errors=True)
         else:
             try:
                 subprocess.run(cmd_old, check=True)
@@ -347,4 +354,4 @@ class TwspaceDL:
                 raise RuntimeError(" ".join(err.cmd)) from err
             shutil.move(filename_old, self.filename + ".m4a")
 
-        logging.info("Finished downloading")
+        logger.info("Finished downloading")
