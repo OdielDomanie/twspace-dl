@@ -21,14 +21,15 @@ logger = logging.getLogger("twspace")
 class TwspaceDL:
     """Downloader class for twitter spaces"""
 
-    def __init__(self, space_id: str, format_str: str) -> None:
+    def __init__(self, space_id: str, format_str: str, tempdir_parent: str) -> None:
         self.id = space_id
         self.format_str = format_str or FormatInfo.DEFAULT_FNAME_FORMAT
         self.session = requests.Session()
-        self.tmpdir = tempfile.mkdtemp(dir=".")
+        self.tmpdir = tempfile.mkdtemp(dir=tempdir_parent)
+        self.ffmpeg_pid = None
 
     @classmethod
-    def from_space_url(cls, url: str, format_str: str):
+    def from_space_url(cls, url: str, format_str: str, tempdir_parent: str):
         """Create a TwspaceDL object from a space url"""
         if not url:
             logger.warning("No space url given, file won't have any metadata")
@@ -39,7 +40,7 @@ class TwspaceDL:
                 space_id = re.findall(r"(?<=spaces/)\w*", url)[0]
             except IndexError as err:
                 raise ValueError("Input URL is not valid") from err
-        return cls(space_id, format_str)
+        return cls(space_id, format_str, tempdir_parent)
 
     @classmethod
     def from_user_tweets(cls, url: str, format_str: str):
