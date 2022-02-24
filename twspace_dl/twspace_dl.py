@@ -340,19 +340,24 @@ class TwspaceDL:
                 cmd_final.insert(10, concat_fn)
                 cmd_final.append(self.filename + ".m4a")
 
-                try:
-                    subprocess.run(cmd_new, check=True)
-                    subprocess.run(cmd_old, check=True)
-                    subprocess.run(cmd_final, check=True)
-                except subprocess.CalledProcessError as err:
-                    raise RuntimeError(" ".join(err.cmd)) from err
+                proc_new = subprocess.Popen(cmd_new, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self.ffmpeg_pid = proc_new.pid
+                if proc_new.wait() != 0: raise RuntimeError(" ".join(cmd_new))
+
+                proc_old = subprocess.Popen(cmd_old, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self.ffmpeg_pid = proc_old.pid
+                if proc_old.wait() != 0: raise RuntimeError(" ".join(cmd_old))
+
+                proc_fin = subprocess.Popen(cmd_final, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self.ffmpeg_pid = proc_fin.pid
+                if proc_fin.wait() != 0: raise RuntimeError(" ".join(cmd_final))
             finally:
                 shutil.rmtree(tempdir, ignore_errors=True)
         else:
-            try:
-                subprocess.run(cmd_old, check=True)
-            except subprocess.CalledProcessError as err:
-                raise RuntimeError(" ".join(err.cmd)) from err
+            proc_old = subprocess.Popen(cmd_old, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.ffmpeg_pid = proc_old.pid
+            if proc_old.wait() != 0: raise RuntimeError(" ".join(cmd_old))
+
             shutil.move(filename_old, self.filename + ".m4a")
 
         logger.info("Finished downloading")
